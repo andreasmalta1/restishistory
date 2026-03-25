@@ -122,6 +122,7 @@ export default function AdminDashboard() {
         {view === "book" ? (
           <BookForm
             episodes={episodes}
+            allBooks={allBooks}
             form={form}
             setForm={setForm}
             onSubmit={handleAddBook}
