@@ -16,6 +16,7 @@ const ERAS = [
 export default function AdminDashboard() {
   const [view, setView] = useState("book")
   const [episodes, setEpisodes] = useState([])
+  const [allBooks, setAllBooks] = useState([])
   const [loading, setLoading] = useState(false)
 
   // 1. FORM STATE (Moved here so it can be passed to BookForm)
@@ -26,6 +27,7 @@ export default function AdminDashboard() {
     note: "",
     era: "",
     ep_id: "",
+    existing_book_id: "",
   })
 
   const fetchEps = async () => {
@@ -36,8 +38,17 @@ export default function AdminDashboard() {
     setEpisodes(data || [])
   }
 
+  const fetchBooks = async () => {
+    const { data } = await supabase
+      .from("books")
+      .select("id, title, author")
+      .order("title")
+    setAllBooks(data || [])
+  }
+
   useEffect(() => {
     fetchEps()
+    fetchBooks()
   }, [])
 
   // 2. LOGIC (Moved into the main component)
@@ -45,17 +56,22 @@ export default function AdminDashboard() {
     e.preventDefault()
     setLoading(true)
 
-    // Insert Book
-    const { data: book, error: bkError } = await supabase
-      .from("books")
-      .insert({
-        title: form.title,
-        author: form.author,
-        cover_url: form.cover,
-        era: form.era,
-      })
-      .select()
-      .single()
+    let bookId = form.existing_book_id
+
+    if (!bookId) {
+      const { data: newBook, error: bkError } = await supabase
+        .from("books")
+        .insert({
+          title: form.title,
+          author: form.author,
+          cover_url: form.cover,
+          era: form.era,
+        })
+        .select()
+        .single()
+
+      if (newBook) bookId = newBook.id
+    }
 
     // Create Mention Link using the selected episode ID
     if (book && form.ep_id) {
@@ -72,6 +88,7 @@ export default function AdminDashboard() {
         note: "",
         era: "",
         ep_id: "",
+        existing_book_id: "",
       })
     } else {
       alert("Make sure you selected an episode!")
@@ -179,58 +196,77 @@ function EpisodeForm({ onRefresh }) {
     </div>
   )
 }
-
-function BookForm({ episodes, form, setForm, onSubmit, loading }) {
+function BookForm({ episodes, allBooks, form, setForm, onSubmit, loading }) {
   return (
     <div className="max-w-2xl bg-white p-8 rounded-2xl shadow-sm border mx-auto">
       <h3 className="text-2xl font-serif font-bold mb-6 italic text-slate-800 text-center">
-        Log New Bibliography Entry
+        Log a Book Mention
       </h3>
-      <form onSubmit={onSubmit} className="space-y-4">
-        <input
-          placeholder="Book Title"
-          className="w-full p-3 bg-slate-50 rounded border"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          required
-        />
-        <input
-          placeholder="Author"
-          className="w-full p-3 bg-slate-50 rounded border"
-          value={form.author}
-          onChange={(e) => setForm({ ...form, author: e.target.value })}
-          required
-        />
-        <input
-          placeholder="Cover Image URL"
-          className="w-full p-3 bg-slate-50 rounded border"
-          value={form.cover}
-          onChange={(e) => setForm({ ...form, cover: e.target.value })}
-        />
-        <textarea
-          placeholder="Context (e.g. Tom says it's 'Cracking')"
-          className="w-full p-3 bg-slate-50 rounded border h-24"
-          value={form.note}
-          onChange={(e) => setForm({ ...form, note: e.target.value })}
-        />
+      <form onSubmit={onSubmit} className="space-y-6">
+        {/* SECTION 1: THE BOOK */}
+        <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+          <label className="block text-xs font-bold text-amber-800 uppercase mb-2">
+            Step 1: Select or Create Book
+          </label>
 
-        <select
-          className="w-full p-3 border rounded-lg bg-slate-50"
-          value={form.era}
-          onChange={(e) => setForm({ ...form, era: e.target.value })}
-          required
-        >
-          <option value="">Select Era</option>
-          {ERAS.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
+          <select
+            className="w-full p-3 border rounded-lg bg-white mb-4"
+            value={form.existing_book_id}
+            onChange={(e) =>
+              setForm({ ...form, existing_book_id: e.target.value })
+            }
+          >
+            <option value="">— Create New Book —</option>
+            {allBooks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.title} ({b.author})
+              </option>
+            ))}
+          </select>
 
-        <div className="mt-8 space-y-4 pt-4 border-t">
+          {!form.existing_book_id && (
+            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+              <input
+                placeholder="New Book Title"
+                className="w-full p-3 bg-white rounded border"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                required
+              />
+              <input
+                placeholder="Author"
+                className="w-full p-3 bg-white rounded border"
+                value={form.author}
+                onChange={(e) => setForm({ ...form, author: e.target.value })}
+                required
+              />
+              <input
+                placeholder="Cover URL"
+                className="w-full p-3 bg-white rounded border"
+                value={form.cover}
+                onChange={(e) => setForm({ ...form, cover: e.target.value })}
+              />
+              <select
+                className="w-full p-3 border rounded-lg bg-white"
+                value={form.era}
+                onChange={(e) => setForm({ ...form, era: e.target.value })}
+                required={!form.existing_book_id}
+              >
+                <option value="">Select Era</option>
+                {ERAS.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 2: THE EPISODE & CONTEXT */}
+        <div className="space-y-4">
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
-            Link to Recorded Episode
+            Step 2: Episode Context
           </label>
           <select
             className="w-full p-4 bg-slate-100 rounded-xl border-none"
@@ -238,7 +274,7 @@ function BookForm({ episodes, form, setForm, onSubmit, loading }) {
             onChange={(e) => setForm({ ...form, ep_id: e.target.value })}
             required
           >
-            <option value="">Select an episode...</option>
+            <option value="">Which episode was it mentioned in?</option>
             {episodes.map((ep) => (
               <option key={ep.id} value={ep.id}>
                 Ep {ep.ep_number}: {ep.title}
@@ -246,15 +282,18 @@ function BookForm({ episodes, form, setForm, onSubmit, loading }) {
             ))}
           </select>
 
+          <textarea
+            placeholder="What did they say about it this time?"
+            className="w-full p-3 bg-slate-50 rounded border h-24"
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+
           <button
             disabled={loading}
-            className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-amber-700 transition-all flex items-center justify-center gap-2"
+            className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-amber-700 transition-all"
           >
-            {loading ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              "Publish to Library"
-            )}
+            {loading ? "Linking..." : "Confirm Mention"}
           </button>
         </div>
       </form>
